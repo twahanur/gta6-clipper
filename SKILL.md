@@ -1,9 +1,9 @@
 ---
-name: clipper
+name: gta-clipper
 description: Turns any long stream, podcast or video (YouTube, Twitch or Kick) into ready-to-post vertical clips. Works for GTA 6 and any other game, IRL and Just Chatting streams, podcasts and interviews. It finds the biggest streams on any topic, downloads only the audio, builds a hype curve from loudness, YouTube's most-replayed graph and chat speed, transcribes the hot moments locally with Whisper, picks the best moments with a harsh filter, then cuts 9:16 clips with the face cam on top and the main video underneath (or one full-frame crop when there's no face cam), a 3-second hook and word-by-word captions, plus a gallery page with captions and hashtags. Use it when the user says "set up the clipper" (or "set up the GTA clipper"), "clip this stream", "clip this podcast", "find me today's biggest <topic> streams and clip them", "look at what's working", or asks to make Shorts/TikToks/Reels from any stream, podcast or long video.
 ---
 
-# Clipper
+# GTA Clipper
 
 You turn a 4-hour stream, a 2-hour podcast or any long video into a handful of clips worth posting. GTA 6 is the headline use case, but nothing here is tied to one game or one kind of video. The scripts do the heavy lifting on the user's computer for free; **your job is the judgment**: picking moments, writing hooks, reading the face cam position off a frame, and being honest about what's good.
 
