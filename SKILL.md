@@ -31,18 +31,22 @@ Lists the most viewed long streams or videos for whatever the user asks about, w
 
 ## 2. Listen (one stream at a time)
 
-`"$PY" analyze.py "<url>" [--top 25] [--model small]`
+`"$PY" analyze.py "<url>" [--top 40] [--model small] [--game gta]`
 
 - Downloads only the audio (a few hundred MB, not the video).
 - Measures loudness every second, pulls YouTube's most-replayed graph, and on YouTube VODs of live streams reads the chat replay to measure chat speed and reactions ("LMAO", "CLIP IT", "???"). Twitch and Kick get loudness only; say so if asked.
-- Turns that into one hype curve, takes the top 25 spikes, and transcribes a window around each one (about 2 minutes on long streams, 1 minute on videos under 30 minutes) with Whisper on the user's computer.
-- Writes `WORK/streams/<id>/for_claude.md` (what you read), `candidates.json`, `hype.png` (show it, it's a good screen share) and `meta.json`.
+- Runs a free sound classifier (YAMNet, `sound_events.py`) on every second, on every stream: it hears gunfire, explosions, crashes, skids, sirens and helicopters (`action`), screams, shouts and laughter (`reaction`), and plain talking (`talk`). High talk with no action is usually a cutscene or chat reading, and it scores lower. Skip it with `--no-sounds`.
+- Turns that into one hype curve, takes the top 40 spikes, and transcribes a window around each one (about 2 minutes on long streams, 1 minute on videos under 30 minutes) with Whisper on the user's computer.
+- Gives each window a `words` count of reaction words ("oh my god", "bro what", "no no no") and, when the title names a game, that game's words (`profiles.py`; GTA: cops, wanted, wasted, busted, heist, chase, crash...). Force a list with `--game gta`. Add a new game by adding an entry to `PROFILES`.
+- Writes `WORK/streams/<id>/for_claude.md` (what you read, strongest candidates first, each with a `sounds:` line), `candidates.json`, `hype.png` (show it, it's a good screen share) and `meta.json`.
 
 Speed: `--model base` is about 2x faster than `small` with slightly rougher transcripts. `--full` transcribes the entire stream (slow, but useful when a stream is quiet and talky, like a podcast). You can run analyze on several streams one after another in the background.
 
 ## 3. Pick (this is your job, be harsh)
 
 Read every `for_claude.md` for this batch, then `WORK/preferences.md` (the user's own rules, which override the defaults below when they conflict).
+
+For gameplay streams, the high-voltage moments are where `sounds:` shows action (gunfire, explosion, crash, siren) or reaction (scream, shout, laughter) **and** the streamer reacts in words. A window that's all game dialogue with high `talk` and no action is a cutscene: cut it unless the streamer's own reaction is the clip. When a window's transcript is sparse (mostly yelling), re-transcribe just that minute before judging it.
 
 For each candidate, decide KEEP or CUT. **A clip is KEEP only if all three are yes:**
 1. **Would a stranger stop scrolling in 2 seconds?** The first line or the first visible beat has to be the reaction, the shock, the joke. Not the setup.
@@ -92,7 +96,7 @@ Before writing the file, show the user a short table (time, streamer, type, scor
    - `"facecam": [x, y, w, h]` as fractions of the image (0 to 1) around the streamer's face cam box, tight to the box edges, or `null` if there's no face cam (full-screen camera or gameplay only).
    - `"focus_x"`: where the action is horizontally in the gameplay (0 left, 0.5 center, 1 right). For a full-screen camera with no gameplay, set it to the person's horizontal center and keep `facecam` null.
    Example: a face cam in the bottom-right corner of a 1920x1080 frame at pixels (1450, 700) to (1900, 1060) is `[0.755, 0.648, 0.234, 0.333]`.
-3. `"$PY" cut.py render --run "<run folder>"` builds every clip: face cam on top (40%), gameplay underneath, the hook in a yellow box for the first 3 seconds, word-by-word captions from a fresh Whisper pass on the clip itself, audio normalized to Shorts loudness, and saves to `<run>/clips/`. Then it checks each clip for length, a black face cam area, black gameplay and missing captions.
+3. `"$PY" cut.py render --run "<run folder>"` builds every clip: face cam on top (40%), gameplay underneath, the hook in a yellow box for the first 3 seconds, word-by-word captions from a fresh Whisper pass on the clip itself, audio normalized to Shorts loudness, and saves to `<run>/clips/`. Every finished clip is also copied to `WORK/videos/` with a serial number that continues across all runs (`001_<hook>.mp4`, `002_...`); a re-rendered clip keeps its number. Point the user at `WORK/videos/` as the place their clips are. Then it checks each clip for length, a black face cam area, black gameplay and missing captions.
 4. If a check fails, or the user wants a change, edit `<run>/layout.json` or `<run>/picks.json` (the copy inside the run folder, not `WORK/picks.json`) and re-render just that clip: `"$PY" cut.py render --run "<run>" --only 03`. A new hook, title or caption only needs the re-render. New times need `"$PY" cut.py download --run "<run>" --only 03` first, then a fresh look at its frames, then the re-render. If a clip prints `!! render failed`, the other clips are still fine; fix that one clip's layout or times and re-render it alone.
 5. Look at a frame from the start and the middle of each finished clip yourself (`~/.clipper/bin/ffmpeg -ss 2 -i clip.mp4 -frames:v 1 check.jpg`, then again at the midpoint) before you say it's done. If the face is cut off, the crop is wrong or the captions read wrong, fix it and re-render.
 

@@ -27,7 +27,7 @@ import tempfile
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
-from common import FFMPEG, HOME_DIR, WORK, explain_download_error, hms, load, media_duration, parse_time, read_wav, run, save, slug, ydl_opts
+from common import FFMPEG, HOME_DIR, WORK, explain_download_error, hms, load, media_duration, parse_time, publish_video, read_wav, run, save, slug, ydl_opts
 
 PAD = 1.5          # extra seconds downloaded on each side, trimmed exactly at render
 OUT_W, OUT_H = 1080, 1920
@@ -393,7 +393,9 @@ def cmd_render(a):
                 os.remove(os.path.join(out_dir, old_clip))
         status = "ok" if not problems else "; ".join(problems)
         print(f"   {status}")
-        p.update({"file": f"clips/{name}", "qc": status, "duration": round(got, 1)})
+        video = publish_video(out, run_dir, key, slug(p.get('hook') or p.get('title') or key))
+        print(f"   saved: {video}")
+        p.update({"file": f"clips/{name}", "qc": status, "duration": round(got, 1), "video": video})
         results.append(p)
         rendered.append(p)
 

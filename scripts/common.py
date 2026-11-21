@@ -106,6 +106,35 @@ def save(path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+VIDEOS = WORK / "videos"  # every finished clip, numbered 001, 002, ... across all runs
+
+
+def next_serial(folder):
+    nums = [int(m.group(1)) for n in (os.listdir(folder) if os.path.isdir(folder) else [])
+            if (m := re.match(r"(\d{3,})_.*\.mp4$", n))]
+    return max(nums, default=0) + 1
+
+
+def publish_video(clip, run_dir, key, name_slug, folder=None):
+    """Copy a finished clip to the videos folder as NNN_<slug>.mp4. A re-rendered clip keeps its number."""
+    folder = str(folder or VIDEOS)
+    os.makedirs(folder, exist_ok=True)
+    book_path = os.path.join(run_dir, "videos.json")
+    book = load(book_path, {}) or {}
+    serial = book.get(key)
+    if serial is None:
+        serial = next_serial(folder)
+    else:
+        for n in os.listdir(folder):
+            if n.startswith(f"{serial:03d}_") and n.endswith(".mp4"):
+                os.remove(os.path.join(folder, n))
+    dest = os.path.join(folder, f"{serial:03d}_{name_slug}.mp4")
+    shutil.copy2(clip, dest)
+    book[key] = serial
+    save(book_path, book)
+    return dest
+
+
 def stream_dir(video_id):
     d = WORK / "streams" / video_id
     d.mkdir(parents=True, exist_ok=True)

@@ -44,6 +44,9 @@ for m in ("base", "small"):
 print("    ok")
 PY
 
+echo "==> Sound classifier (YAMNet, hears gunfire, explosions, screams, laughter; one time ~16 MB)"
+(cd "$(dirname "$0")" && "$HOME_DIR/venv/bin/python" -c "from sound_events import ensure_model; print('    ok' if ensure_model() else '    skipped: analysis will use loudness only')")
+
 echo "==> Caption font (Anton, free open-source font, used when Arial Black isn't installed)"
 mkdir -p "$HOME_DIR/fonts"
 if [ ! -s "$HOME_DIR/fonts/Anton-Regular.ttf" ]; then

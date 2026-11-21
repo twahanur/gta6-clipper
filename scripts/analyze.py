@@ -4,8 +4,12 @@ Steps: download ONLY the audio, measure loudness every second, pull YouTube's
 "most replayed" graph and the live-chat replay (when they exist), build one hype
 curve, then transcribe the hottest windows with Whisper on your own computer.
 
+Every second is also run through a sound classifier (sound_events.py) that hears gunfire,
+explosions, crashes, sirens, screams and laughter, and the transcripts get a bonus for reaction
+words (and game words when the title names a game, see profiles.py).
+
 Usage:
-  python analyze.py <stream url> [--top 25] [--model small] [--full] [--no-chat]
+  python analyze.py <stream url> [--top 40] [--model small] [--full] [--no-chat] [--game gta]
 
 Output (in ~/Clipper/streams/<id>/):
   for_claude.md    every candidate window with its transcript and hype score (Claude reads this)
@@ -25,6 +29,8 @@ import time
 import numpy as np
 import yt_dlp
 
+from profiles import detect_profile, keyword_score
+from sound_events import event_signal, top_labels
 from common import FFMPEG, explain_download_error, hms, read_wav, run, save, stream_dir, ydl_opts
 
 BIN = 10  # seconds per hype bin
@@ -68,12 +74,17 @@ def download_chat(url, d):
     if path.exists():
         return path
     opts = ydl_opts(skip_download=True, writesubtitles=True, subtitleslangs=["live_chat"], outtmpl=str(d / "chat"))
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([url])
-    except Exception as e:  # chat replay is a bonus, never a blocker
-        print(f"   (no chat replay: {str(e)[:80]})")
-    return path if path.exists() else None
+    for attempt in (1, 2):  # long chat replays sometimes cut off halfway; start over once
+        for part in d.glob("chat*.part"):
+            part.unlink()
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as e:  # chat replay is a bonus, never a blocker
+            print(f"   (chat replay attempt {attempt} failed: {str(e)[:80]})")
+        if path.exists():
+            return path
+    return None
 
 
 def chat_bins(path, nbins):
@@ -183,10 +194,12 @@ def draw_hype(score, windows, path, title):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("url")
-    ap.add_argument("--top", type=int, default=25, help="how many candidate moments to send to Claude")
+    ap.add_argument("--top", type=int, default=40, help="how many candidate moments to send to Claude")
     ap.add_argument("--model", default="small", help="whisper model: base (fast) or small (better)")
     ap.add_argument("--full", action="store_true", help="transcribe the whole stream, not just the hot windows")
     ap.add_argument("--no-chat", action="store_true")
+    ap.add_argument("--no-sounds", action="store_true", help="skip the sound classifier (gunfire, screams...)")
+    ap.add_argument("--game", help="game word list to use (gta); picked from the title when not given")
     a = ap.parse_args()
     t0 = time.time()
 
@@ -228,6 +241,18 @@ def main():
     nb = int(math.ceil(len(loud) / BIN))
     loud_bins = np.array([loud[i * BIN:(i + 1) * BIN].max() for i in range(nb)])
     signals = {"loudness": robust_z(loud_bins)}
+    groups = None
+    if not a.no_sounds:
+        print("==> Listening for action and reaction sounds (gunfire, explosions, crashes, screams, laughter)")
+        ev = event_signal(audio, nb, BIN)
+        if ev is not None:
+            combined, groups = ev
+            top = float(np.percentile(combined, 99)) or 1.0
+            signals["sound_events"] = np.clip(combined / top * 4, 0, 6)
+            print("   + sound events")
+    profile = detect_profile(meta["title"], a.game)
+    if profile:
+        print(f"   + {profile} word list for the transcripts")
 
     heat = heatmap_bins(info, nb)
     if heat is not None and heat.max() > 0:
@@ -246,7 +271,7 @@ def main():
     elif not a.no_chat and meta["extractor"] != "Youtube":
         print(f"   ({meta['extractor']} has no chat replay to read, so it uses loudness only)")
 
-    weights = {"loudness": 0.45, "chat_speed": 0.35, "most_replayed": 0.20}
+    weights = {"loudness": 0.30, "sound_events": 0.30, "chat_speed": 0.25, "most_replayed": 0.15}
     tot = sum(weights[k] for k in signals)
     score = sum(signals[k] * weights[k] / tot for k in signals)
     pct = (np.argsort(np.argsort(score)) / max(1, nb - 1) * 100).round()
@@ -277,14 +302,18 @@ def main():
             "cand": i, "start": round(w["start"], 1), "end": round(w["end"], 1), "peak": round(w["peak"], 1),
             "hype": int(pct[b]),
             "signals": {k: round(float(v[b]), 2) for k, v in signals.items()},
+            "keywords": keyword_score(" ".join(s["text"] for s in ss), profile),
+            "sounds": top_labels(groups, b),
             "segments": [{"t": round(s["start"], 1), "hype": int(pct[min(nb - 1, int(s["start"] // BIN))]),
                           "text": s["text"]} for s in ss],
         })
-    save(d / "candidates.json", {"meta": meta, "signals_used": list(signals), "candidates": cands})
+    if not a.full:  # strongest first: hype plus a bonus for reaction/game words in what was said
+        cands.sort(key=lambda c: -(c["hype"] + 8 * c["keywords"]))
+    save(d / "candidates.json", {"meta": meta, "signals_used": list(signals), "profile": profile, "candidates": cands})
     draw_hype(score, windows, d / "hype.png", meta["title"] or vid)
 
     lines = [f"# {meta['title']}", f"Channel: {meta['channel']} | Length: {hms(duration)} | URL: {meta['url']}",
-             f"Signals used: {', '.join(signals)}", ""]
+             f"Signals used: {', '.join(signals)}" + (f" | word list: {profile}" if profile else ""), ""]
     if a.full:
         # one long window: split into 12-minute blocks so it reads in pieces
         allsegs = cands[0]["segments"]
@@ -296,10 +325,15 @@ def main():
                 lines.append(f"\n## Block {block + 1} ({hms(block * 720)} to {hms((block + 1) * 720)})")
             lines.append(f"[{hms(s['t'])} | hype {s['hype']}] {s['text']}")
     else:
-        lines.append("Each candidate is a window around a hype spike. Hype is 0 to 100 "
-                     "(100 = the most intense moment of this stream).\n")
+        lines.append("Each candidate is a window around a hype spike, strongest first. Hype is 0 to 100 "
+                     "(100 = the most intense moment of this stream). 'sounds' is what the sound classifier "
+                     "heard at the peak (action = gunfire/explosions/crashes/sirens, reaction = screams/shouts/"
+                     "laughter, talk = plain talking, high talk with no action is usually a cutscene). "
+                     "'words' counts reaction and game words said in the window.\n")
         for c in cands:
-            lines.append(f"## Candidate {c['cand']} | peak {hms(c['peak'])} | hype {c['hype']} | {c['signals']}")
+            lines.append(f"## Candidate {c['cand']} | peak {hms(c['peak'])} | hype {c['hype']} | words {c['keywords']:.0f} | {c['signals']}")
+            if c["sounds"]:
+                lines.append(f"sounds: {c['sounds']}")
             lines.append(f"Window {hms(c['start'])} to {hms(c['end'])}")
             for s in c["segments"]:
                 lines.append(f"[{hms(s['t'])} | hype {s['hype']}] {s['text']}")

@@ -1,4 +1,4 @@
-# Clipper
+# Stream Clipper
 
 A free [Claude Code](https://claude.com/claude-code) skill that turns any long stream, podcast or video into ready-to-post vertical clips. It was built for GTA 6 streams, and it works the same on any game, IRL and Just Chatting streams, podcasts and interviews.
 
@@ -8,7 +8,15 @@ In testing, an hour-long stream turned into 3 ready-to-post clips in about 13 mi
 
 ![The pipeline: find, listen, pick, cut, post](docs/pipeline.png)
 
-Made by Ray Fu ([@raycfu](https://www.instagram.com/raycfu)). The full walkthrough is on YouTube, and more free skills and guides are in the Skool community: https://skool.com/raycfu
+Based on [Clipper](https://github.com/raycfu/clipper) by Ray Fu ([@raycfu](https://www.instagram.com/raycfu)), MIT licensed. This version adds sound-event detection and a numbered videos folder.
+
+## What's new in this version
+
+- **It hears what's happening, not just how loud it is.** A free sound classifier ([YAMNet](https://huggingface.co/andrelgomes/yamnet-onnx), runs on your computer, ~16 MB) scores every second of every stream for action (gunfire, explosions, crashes, skids, sirens, helicopters) and reactions (screams, shouts, laughter). Plain talking with no action, like a game cutscene, scores lower, so cutscenes stop beating real moments. An 11-hour stream takes about 2 extra minutes.
+- **Reaction and game words.** Every window gets a bonus for words like "oh my god", "bro what", "no no no". When the title names a game, that game's words count too (GTA: cops, wanted, wasted, busted, heist, chase, crash...). Add your own game in `scripts/profiles.py`.
+- **Chat replay retry.** Long chat replays that cut off halfway get downloaded again.
+- **40 candidates** instead of 25, listed strongest first, each with what the sound classifier heard.
+- **All clips in one folder, numbered.** Every finished clip is also copied to `~/Clipper/videos/` as `001_<hook>.mp4`, `002_...`, continuing across every stream you clip. A re-rendered clip keeps its number.
 
 ## What you need
 
@@ -21,7 +29,7 @@ Everything else is free and installs itself the first time: yt-dlp, ffmpeg, Whis
 ## Install
 
 ```bash
-git clone https://github.com/raycfu/clipper ~/.claude/skills/clipper
+git clone https://github.com/twahanur/stream-clipper ~/.claude/skills/clipper
 ```
 
 No git? Click **Code → Download ZIP** above, unzip it, rename the folder to `clipper` and move it into `~/.claude/skills/`. On a Mac that folder is hidden: in Finder press `Cmd + Shift + G`, paste `~/.claude/skills/` and press Enter.
@@ -45,12 +53,12 @@ Say one of these to Claude:
 | `clip 3 starts slow, start it 4 seconds later` | Re-cuts one clip |
 | `look at what's working` | Weekly report from your posted Shorts' views (give it your channel link) |
 
-Claude shows you a table of the moments it kept and the ones it cut, with a reason for each, then renders the clips and opens the gallery page. Clips are saved in `~/Clipper/runs/<date>/clips/`.
+Claude shows you a table of the moments it kept and the ones it cut, with a reason for each, then renders the clips and opens the gallery page. Clips are saved in `~/Clipper/videos/` (numbered 001, 002, ...) and in `~/Clipper/runs/<date>/clips/`.
 
 ## How it works
 
 1. **Find**: searches YouTube for the most viewed long streams or videos on your topic. Streams that are still live are skipped until the recording is up.
-2. **Listen**: downloads only the audio, then builds a hype curve from how loud the streamer gets, YouTube's "most replayed" graph and, on YouTube stream recordings with chat replay, how fast chat is moving. It transcribes the 25 hottest spots with Whisper on your computer.
+2. **Listen**: downloads only the audio, then builds a hype curve from how loud the streamer gets, what the sound classifier hears (action and reaction sounds), YouTube's "most replayed" graph and, on YouTube stream recordings with chat replay, how fast chat is moving. It transcribes the 40 hottest spots with Whisper on your computer and scores them for reaction and game words.
 3. **Pick**: Claude scores every moment with three questions. Would a stranger stop scrolling in two seconds? Does it make sense with zero context? Does it pay off inside the clip? One no and it's cut.
 4. **Cut**: downloads only the minutes each clip needs and builds a 1080x1920 video: face cam on top and the main video underneath (or one full-frame crop when there's no face cam), a hook for the first 3 seconds, word-by-word captions and audio at Shorts loudness. Claude checks three frames of every clip and trims around any layout switch in the stream, and every clip is checked for length, a black face cam and missing captions.
 5. **Post**: one page with every clip, a title, caption and hashtags with copy buttons, and a link to the exact second in the original stream so you can credit it. Nothing is ever posted for you.
@@ -88,7 +96,7 @@ Your clips stay in `~/Clipper` until you delete that folder too.
 - **No chat signal**: chat speed only works on YouTube recordings of live streams that kept chat replay on. Twitch and Kick use loudness only, which still works well.
 - **A caption is wrong**: ask Claude to re-render that clip with the `medium` model.
 - **Transcribing is slow**: ask Claude to use the `base` model or fewer candidates (`--top 15`).
-- **Something else**: [open an issue](https://github.com/raycfu/clipper/issues) with the last lines Claude showed you.
+- **Something else**: [open an issue](https://github.com/twahanur/stream-clipper/issues) with the last lines Claude showed you.
 
 ## FAQ
 
@@ -111,6 +119,9 @@ SKILL.md                  the instructions Claude follows
 scripts/setup.sh          one-time install into ~/.clipper
 scripts/find_streams.py   find the biggest streams or videos on any topic
 scripts/analyze.py        audio, hype curve, transcripts of the hot spots
+scripts/sound_events.py   sound classifier: gunfire, explosions, crashes, screams, laughter
+scripts/profiles.py       reaction words and per-game word lists (GTA)
+scripts/tests/            quick tests (python scripts/tests/test_*.py)
 scripts/cut.py            download only the needed minutes, render vertical clips
 scripts/gallery.py        the page you post from
 scripts/learn.py          weekly "look at what's working" report
@@ -119,4 +130,4 @@ scripts/common.py         shared helpers
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Original Clipper by Ray Fu; sound events, word lists and the videos folder added in this version. YAMNet is Apache-2.0 (Google).
