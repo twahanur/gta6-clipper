@@ -1,4 +1,4 @@
-# GTA Clipper
+# GTA 6 Clipper
 
 A free [Claude Code](https://claude.com/claude-code) skill that turns any long stream, podcast or video into ready-to-post vertical clips. It was built for GTA 6 streams, and it works the same on any game, IRL and Just Chatting streams, podcasts and interviews.
 
@@ -41,10 +41,10 @@ Everything else is free and installs itself the first time: yt-dlp, ffmpeg, Whis
 ## Install
 
 ```bash
-git clone https://github.com/twahanur/gta-clipper ~/.claude/skills/gta-clipper
+git clone https://github.com/twahanur/gta6-clipper ~/.claude/skills/gta6-clipper
 ```
 
-No git? Click **Code → Download ZIP** above, unzip it, rename the folder to `gta-clipper` and move it into `~/.claude/skills/`. On a Mac that folder is hidden: in Finder press `Cmd + Shift + G`, paste `~/.claude/skills/` and press Enter.
+No git? Click **Code → Download ZIP** above, unzip it, rename the folder to `gta6-clipper` and move it into `~/.claude/skills/`. On a Mac that folder is hidden: in Finder press `Cmd + Shift + G`, paste `~/.claude/skills/` and press Enter.
 
 Then open Claude Code (in the terminal, or the Code tab of the Claude desktop app) and say:
 
@@ -87,7 +87,7 @@ Every week, `look at what's working` reads the public views on your Shorts, matc
 ## Update
 
 ```bash
-cd ~/.claude/skills/gta-clipper && git pull
+cd ~/.claude/skills/gta6-clipper && git pull
 ```
 
 Then say "set up the clipper" again. It takes a few seconds and also updates the downloader, which fixes most YouTube download errors.
@@ -95,7 +95,7 @@ Then say "set up the clipper" again. It takes a few seconds and also updates the
 ## Uninstall
 
 ```bash
-rm -rf ~/.claude/skills/gta-clipper ~/.clipper
+rm -rf ~/.claude/skills/gta6-clipper ~/.clipper
 ```
 
 Your clips stay in `~/Clipper` until you delete that folder too.
@@ -110,7 +110,7 @@ Your clips stay in `~/Clipper` until you delete that folder too.
 - **A caption is wrong**: ask Claude to re-render that clip with the `medium` model.
 - **Transcribing is slow**: ask Claude to use the `base` model or fewer candidates (`--top 15`). With an NVIDIA GPU, run setup again so Whisper can use it.
 - **Captions show boxes**: Chinese, Japanese and Korean fonts aren't included yet. Other scripts download their font the first time; if that failed (no internet), render the clip again.
-- **Something else**: [open an issue](https://github.com/twahanur/gta-clipper/issues) with the last lines Claude showed you.
+- **Something else**: [open an issue](https://github.com/twahanur/gta6-clipper/issues) with the last lines Claude showed you.
 
 ## FAQ
 
@@ -120,7 +120,7 @@ Your clips stay in `~/Clipper` until you delete that folder too.
 
 **Podcasts and interviews?** Yes. With no face cam it cuts one clean vertical crop on the person speaking, and it picks moments by what's said (stories, advice, hot takes), not just by how loud it gets.
 
-**I installed an older version (`~/.claude/skills/clipper` or `~/.claude/skills/gta6-clipper`). Do I need to do anything?** Delete that folder, install again with the command above and say "set up the clipper". Keeping both installed gives Claude two copies of the skill. Your clips stay where they are (`~/Clipper`, or `~/GTA6 Clipper` for the oldest version).
+**I installed an older version. Do I need to do anything?** If it's in `~/.claude/skills/clipper`, delete that folder; keeping both gives Claude two copies of the skill. If it's the original GTA 6 Clipper in `~/.claude/skills/gta6-clipper`, delete that folder too (it points at a different repo, so `git pull` won't update it). Then install with the command above and say "set up the clipper". Your clips stay where they are (`~/Clipper`, or `~/GTA6 Clipper` for the original version).
 
 **Does it upload anything?** No. It never posts, and your clips never leave your computer until you post them.
 
