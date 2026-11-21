@@ -1,4 +1,4 @@
-import os, sys, tempfile, json
+import os, sys, tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from common import next_serial, publish_video
 

@@ -9,12 +9,42 @@ Usage: python learn.py --channel https://www.youtube.com/@yourhandle
 import argparse
 import csv
 import difflib
+import json
+import math
 import statistics
 from collections import defaultdict
 
 import yt_dlp
 
-from common import WORK, explain_download_error, ydl_opts
+from common import WORK, explain_download_error, save, ydl_opts
+
+
+def learn_weights(matched, min_clips=10):
+    """Which analyzer signals go with more views on this channel. For each signal, the correlation
+    between its value at the clip's moment and log(views) becomes a gentle multiplier on that
+    signal's weight (0.6x to 1.6x), so the next analysis leans toward what this audience watches.
+    Returns ({signal: multiplier}, {signal: correlation}) or (None, None) with too little data."""
+    rows = []
+    for m in matched:
+        try:
+            sig = json.loads(m.get("signals") or "{}")
+        except ValueError:
+            continue
+        if sig:
+            rows.append((sig, math.log1p(m["views"])))
+    if len(rows) < min_clips:
+        return None, None
+    keys = sorted({k for sig, _ in rows for k in sig if k != "strength"})
+    weights, corr = {}, {}
+    ys = [y for _, y in rows]
+    for k in keys:
+        xs = [sig.get(k, 0.0) for sig, _ in rows]
+        if len(set(xs)) < 3:
+            continue
+        r = statistics.correlation(xs, ys)
+        corr[k] = round(r, 2)
+        weights[k] = round(min(1.6, max(0.6, math.exp(0.7 * r))), 2)
+    return weights, corr
 
 
 def norm(s):
@@ -103,6 +133,14 @@ def main():
     out += [f"- {m['views']:,} views | {m.get('moment_type')} | {m.get('streamer')} | hook: {m.get('hook')}" for m in ranked[:5]]
     out.append("\n## Bottom 5")
     out += [f"- {m['views']:,} views | {m.get('moment_type')} | {m.get('streamer')} | hook: {m.get('hook')}" for m in ranked[-5:]]
+
+    weights, corr = learn_weights(matched)
+    if weights:
+        save(WORK / "weights.json", weights)
+        out.append("\n## Signal weights learned from your views (used by the next analysis)")
+        out += [f"- {k}: x{weights[k]} (correlation with views {corr[k]:+.2f})" for k in sorted(weights, key=lambda k: -weights[k])]
+    else:
+        out.append("\n(Signal weights need 10+ matched clips made with the new analyzer; keeping the defaults.)")
 
     report = "\n".join(out)
     (WORK / "learn_report.md").write_text(report, encoding="utf-8")

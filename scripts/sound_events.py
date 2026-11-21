@@ -30,9 +30,11 @@ ACTION = {
     317: "police siren", 318: "siren", 319: "siren", 390: "siren", 304: "car alarm", 333: "helicopter",
 }
 REACTION = {
-    6: "shout", 7: "bellow", 8: "whoop", 9: "yell", 11: "scream", 13: "laughter", 17: "belly laugh", 61: "cheering",
+    6: "shout", 7: "bellow", 8: "whoop", 9: "yell", 11: "scream", 13: "laughter", 15: "giggle", 16: "snicker",
+    17: "belly laugh", 18: "chuckle", 61: "cheering",
 }
 SPEECH = 0
+MUSIC = 132
 
 _A = np.array(sorted(ACTION))
 _R = np.array(sorted(REACTION))
@@ -130,3 +132,62 @@ def top_labels(groups, b):
     lab = groups["labels"][b] if groups.get("labels") else ""
     return (f"{lab + ' | ' if lab else ''}action {groups['action'][b]:.2f} "
             f"reaction {groups['reaction'][b]:.2f} talk {groups['calm'][b]:.2f}")
+
+
+def stream_features(audio, with_model=True):
+    """One pass over the whole audio, one value per second:
+      loud     overall level (dB)
+      voice    level in the voice band, 300 to 3400 Hz (dB): the streamer yelling, not the game's bass
+      bright   spectral brightness (Hz): yelling and laughing are brighter than talking
+    and with the YAMNet model:
+      speech, reaction (laugh/shout/scream), action (gunfire, explosion, crash...), music (copyright risk)
+      and a label per second.
+    """
+    sess = None
+    if with_model and ensure_model():
+        try:
+            import onnxruntime as ort
+            sess = ort.InferenceSession(str(MODEL), providers=["CPUExecutionProvider"])
+        except Exception as e:
+            print(f"   (sound model failed to load, using loudness and voice only: {str(e)[:80]})")
+    freqs = np.fft.rfftfreq(SR, 1 / SR)
+    band = (freqs >= 300) & (freqs <= 3400)
+    win = np.hanning(SR).astype(np.float32)
+    out = {k: [] for k in ("loud", "voice", "bright", "speech", "reaction", "action", "music", "label_c", "label_p")}
+    cols = np.concatenate([_A, _R])
+    p = subprocess.Popen([FFMPEG, "-v", "error", "-i", str(audio), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+                         stdout=subprocess.PIPE)
+    while True:
+        buf = p.stdout.read(SR * CHUNK * 4)
+        n = len(buf) // 4 // SR  # whole seconds in this chunk
+        if n < 1:
+            break
+        x = np.frombuffer(buf[: n * SR * 4], dtype=np.float32)
+        fr = x.reshape(n, SR)
+        out["loud"].append(10 * np.log10(np.mean(fr * fr, axis=1) + 1e-10))
+        spec = np.abs(np.fft.rfft(fr * win, axis=1)) ** 2
+        out["voice"].append(10 * np.log10(spec[:, band].sum(axis=1) + 1e-10))
+        out["bright"].append((spec * freqs).sum(axis=1) / (spec.sum(axis=1) + 1e-10))
+        del spec
+        if sess is not None:
+            probs = sess.run(["output_0"], {"waveform": x})[0]
+            sec = np.minimum((np.arange(len(probs)) * HOP + HOP).astype(int), n - 1)
+            for key, val in (("speech", probs[:, SPEECH]), ("reaction", probs[:, _R].max(axis=1)),
+                             ("action", probs[:, _A].max(axis=1)), ("music", probs[:, MUSIC])):
+                a = np.zeros(n, dtype=np.float32)
+                np.maximum.at(a, sec, val)
+                out[key].append(a)
+            sub = probs[:, cols]
+            best_c = np.full(n, -1)
+            best_p = np.zeros(n, dtype=np.float32)
+            for s_, c, v in zip(sec, sub.argmax(axis=1), sub.max(axis=1)):
+                if v > best_p[s_]:
+                    best_p[s_], best_c[s_] = v, cols[c]
+            out["label_c"].append(best_c)
+            out["label_p"].append(best_p)
+    p.wait()
+    feat = {k: np.concatenate(v) for k, v in out.items() if v}
+    if "label_c" in feat:
+        names = {**ACTION, **REACTION}
+        feat["labels"] = [names[c] if c >= 0 and v >= 0.3 else "" for c, v in zip(feat.pop("label_c"), feat.pop("label_p"))]
+    return feat

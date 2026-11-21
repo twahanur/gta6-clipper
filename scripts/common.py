@@ -106,7 +106,8 @@ def save(path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-VIDEOS = WORK / "videos"  # every finished clip, numbered 001, 002, ... across all runs
+# every finished clip, numbered 001, 002, ... across all runs (CLIPPER_VIDEOS puts them somewhere else)
+VIDEOS = pathlib.Path(os.path.expanduser(os.environ["CLIPPER_VIDEOS"])) if os.environ.get("CLIPPER_VIDEOS") else WORK / "videos"
 
 
 def next_serial(folder):
@@ -159,6 +160,52 @@ def read_wav(path):
     with wave.open(str(path), "rb") as w:
         data = w.readframes(w.getnframes())
     return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+_KEEP = set("'!?$%.,-।॥‌‍")  # Indic sentence marks, and the joiners Bangla/Hindi/Persian need
+
+
+def clean_word(word):
+    """Strip a Whisper word down to letters, digits and a little punctuation.
+    Keeps combining marks (the vowel signs in Bangla, Hindi, Tamil...), which a plain \\w regex drops:
+    'কিছু' must stay 'কিছু', not become 'কছ'."""
+    import unicodedata
+    return "".join(c for c in word.strip()
+                   if c.isalnum() or c in _KEEP or unicodedata.category(c).startswith("M"))
+
+
+def _preload_cuda_libs():
+    """faster-whisper needs cuBLAS and cuDNN. When setup.sh installed them as pip packages, load them
+    now so the GPU works without the user setting LD_LIBRARY_PATH."""
+    import ctypes
+    import glob
+    import site
+    for sp in site.getsitepackages():
+        for pat in ("nvidia/cublas/lib/libcublas*.so*", "nvidia/cudnn/lib/libcudnn*.so*"):
+            for lib in sorted(glob.glob(os.path.join(sp, pat))):
+                try:
+                    ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
+                except OSError:
+                    pass
+
+
+def load_whisper(name):
+    """Whisper on an NVIDIA GPU when one works (several times faster), otherwise on the CPU.
+    CLIPPER_DEVICE=cpu forces the CPU."""
+    from faster_whisper import WhisperModel
+    if os.environ.get("CLIPPER_DEVICE", "auto").lower() != "cpu":
+        try:
+            import ctranslate2
+            if ctranslate2.get_cuda_device_count() > 0:
+                _preload_cuda_libs()
+                model = WhisperModel(name, device="cuda", compute_type="float16")
+                import numpy as np
+                list(model.transcribe(np.zeros(16000, dtype=np.float32))[0])  # a missing cuDNN fails here, not mid-run
+                print("   (Whisper is running on the GPU)")
+                return model
+        except Exception as e:
+            print(f"   (GPU found but not usable, using the CPU: {str(e).strip()[:100]})")
+    return WhisperModel(name, device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4)
 
 
 def explain_download_error(e):
