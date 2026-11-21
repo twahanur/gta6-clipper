@@ -8,7 +8,7 @@ In testing, an hour-long stream turned into 3 ready-to-post clips in about 13 mi
 
 ![The pipeline: find, listen, pick, cut, post](docs/pipeline.png)
 
-Based on [Clipper](https://github.com/raycfu/clipper) by Ray Fu ([@raycfu](https://www.instagram.com/raycfu)), MIT licensed. This version adds sound-event detection and a numbered videos folder.
+Developed by [twahanur](https://github.com/twahanur). Bugs and ideas: [open an issue](https://github.com/twahanur/gta6-clipper/issues).
 
 ## What's new in this version
 
@@ -154,4 +154,4 @@ scripts/common.py         shared helpers
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Original Clipper by Ray Fu; sound events, word lists and the videos folder added in this version. YAMNet is Apache-2.0 (Google).
+MIT. See [LICENSE](LICENSE). Developed by [twahanur](https://github.com/twahanur): the analyzer, layouts, captions, measuring tools and everything under "What's new". It started from the open-source [Clipper](https://github.com/raycfu/clipper) by Ray Fu (MIT), whose copyright notice stays in the license as MIT requires. YAMNet is Apache-2.0 (Google).
